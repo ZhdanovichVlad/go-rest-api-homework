@@ -46,18 +46,16 @@ var tasks = map[string]Task{
 // Ниже описаны обработчики для каждого эндпоинта
 // 1-ый обработчик выводит все задачи
 func getTasks(w http.ResponseWriter, req *http.Request) {
-	keys := make([]string, 0, len(tasks))
-	for k, _ := range tasks {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	var respTotal []Task
-	for i := 0; i < len(keys); i++ {
-		respTotal = append(respTotal, tasks[keys[i]])
-
+	tasksSlice := make([]Task, 0, len(tasks))
+	for _, value := range tasks {
+		tasksSlice = append(tasksSlice, value)
 	}
 
-	resp, err := json.Marshal(respTotal)
+	sort.Slice(tasksSlice, func(i, j int) bool {
+		return tasksSlice[i].ID < tasksSlice[j].ID
+	})
+
+	resp, err := json.Marshal(tasksSlice)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		fmt.Println(err.Error())
@@ -69,7 +67,6 @@ func getTasks(w http.ResponseWriter, req *http.Request) {
 	_, err = w.Write(resp)
 	if err != nil {
 		log.Printf("Error w.Write response: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -135,7 +132,6 @@ func getTask(w http.ResponseWriter, req *http.Request) {
 	_, err = w.Write(resp)
 	if err != nil {
 		log.Printf("Error w.Write response: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
