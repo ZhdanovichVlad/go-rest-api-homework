@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"sort"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// Task ...
+// Task
 type Task struct {
 	ID           string   `json:"id"`
 	Description  string   `json:"description"`
@@ -39,14 +43,122 @@ var tasks = map[string]Task{
 	},
 }
 
-// Ниже напишите обработчики для каждого эндпоинта
-// ...
+// Ниже описаны обработчики для каждого эндпоинта
+// 1-ый обработчик выводит все задачи
+func getTasks(w http.ResponseWriter, req *http.Request) {
+	tasksSlice := make([]Task, 0, len(tasks))
+	for _, value := range tasks {
+		tasksSlice = append(tasksSlice, value)
+	}
+
+	sort.Slice(tasksSlice, func(i, j int) bool {
+		return tasksSlice[i].ID < tasksSlice[j].ID
+	})
+
+	resp, err := json.Marshal(tasksSlice)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Println(err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(resp)
+	if err != nil {
+		log.Printf("Error w.Write response: %v", err)
+		return
+	}
+
+}
+
+// 2-ой обработчик для отправки задачи на сервер
+func createTask(w http.ResponseWriter, req *http.Request) {
+	var task Task
+	var buf bytes.Buffer
+	_, err := buf.ReadFrom(req.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		fmt.Println(err.Error())
+		return
+	}
+	if err = json.Unmarshal(buf.Bytes(), &task); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		fmt.Println(err.Error())
+		return
+	}
+	if task.ID == "" {
+		http.Error(w, "Не указано ID задачи", http.StatusBadRequest)
+		fmt.Println("Не указано ID задачи")
+		return
+
+	}
+
+	_, exist := tasks[task.ID]
+	if exist {
+		http.Error(w, "Задача c таким ID уже существует", http.StatusBadRequest)
+		fmt.Println("Задача c таким ID уже существует")
+		return
+	}
+
+	if len(task.Applications) == 0 {
+		task.Applications = append(task.Applications, req.Header.Get("User-Agent"))
+	}
+
+	tasks[task.ID] = task
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+}
+
+// 3-ий обработчик выводит задачу по заданному ID
+func getTask(w http.ResponseWriter, req *http.Request) {
+	id := chi.URLParam(req, "id")
+	task, ok := tasks[id]
+	if !ok {
+		http.Error(w, "Запрашиваемая задача не найдена", http.StatusBadRequest)
+		fmt.Println("Запрашиваемая задача не найдена")
+		return
+	}
+	resp, err := json.Marshal(task)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		fmt.Println(err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, err = w.Write(resp)
+	if err != nil {
+		log.Printf("Error w.Write response: %v", err)
+		return
+	}
+
+}
+
+// 4-тый обработчик удаляет задачу
+func deleteTask(w http.ResponseWriter, req *http.Request) {
+	id := chi.URLParam(req, "id")
+	_, ok := tasks[id]
+	if !ok {
+		http.Error(w, "Удаляемая задача не найдена", http.StatusBadRequest)
+		fmt.Println("Удаляемая задача не найдена")
+		return
+	}
+	delete(tasks, id)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+}
 
 func main() {
 	r := chi.NewRouter()
-
-	// здесь регистрируйте ваши обработчики
-	// ...
+	// зарегистрированные обработчики
+	r.Get("/tasks", getTasks)
+	r.Post("/tasks", createTask)
+	r.Get("/tasks/{id}", getTask)
+	r.Delete("/tasks/{id}", deleteTask)
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
